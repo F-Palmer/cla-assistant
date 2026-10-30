@@ -157,7 +157,10 @@ class ClaApi {
 
         // Secure path: build safeArgs from scratch (allow-list) so no req.args field can
         // redirect the query, then bind the verified scope.
-        const safeArgs = { gist: req.args && req.args.gist }
+        const safeArgs = {
+            gist: req.args && req.args.gist,
+            sharedGist: req.args && req.args.sharedGist
+        }
         if (hasRepoId) {
             safeArgs.repoId = scope.repoId
             return cla.getAll(safeArgs)
