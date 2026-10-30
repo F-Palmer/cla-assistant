@@ -770,17 +770,21 @@ describe('', () => {
             req.authorizedResource = { repoId: 42 }
             sinon.stub(cla, 'getAll').callsFake(async (args) => {
                 // The verified scope must drive the query, not req.args.owner/repo.
+                // sharedGist is forwarded from req.args (undefined here since not supplied).
                 assert.deepEqual(args, {
                     gist: testData.repo_from_db.gist,
+                    sharedGist: undefined,
                     repoId: 42
                 })
                 return []
             })
 
-            await cla_api.getAll(req)
-
-            assert(cla.getAll.called)
-            cla.getAll.restore()
+            try {
+                await cla_api.getAll(req)
+                assert(cla.getAll.called)
+            } finally {
+                cla.getAll.restore()
+            }
         })
 
         it('should call cla service on getAll and bind the query to the authorized orgId, ignoring conflicting args', async () => {
@@ -793,17 +797,22 @@ describe('', () => {
             }
             req.authorizedResource = { orgId: 7 }
             sinon.stub(cla, 'getAll').callsFake(async (args) => {
+                // repoId/owner/repo from req.args must be stripped; only orgId from the
+                // verified scope and the safe passthrough fields (gist, sharedGist) remain.
                 assert.deepEqual(args, {
                     gist: testData.repo_from_db.gist,
+                    sharedGist: undefined,
                     orgId: 7
                 })
                 return []
             })
 
-            await cla_api.getAll(req)
-
-            assert(cla.getAll.called)
-            cla.getAll.restore()
+            try {
+                await cla_api.getAll(req)
+                assert(cla.getAll.called)
+            } finally {
+                cla.getAll.restore()
+            }
         })
 
         it('should refuse getAll when req.authorizedResource is missing (fail closed)', async () => {
@@ -875,14 +884,41 @@ describe('', () => {
             sinon.stub(cla, 'getAll').callsFake(async (args) => {
                 assert.deepEqual(args, {
                     gist: testData.repo_from_db.gist,
+                    sharedGist: undefined,
                     repoId: 42
                 })
                 return []
             })
 
-            await cla_api.getAll(req)
-            assert(cla.getAll.called)
-            cla.getAll.restore()
+            try {
+                await cla_api.getAll(req)
+                assert(cla.getAll.called)
+            } finally {
+                cla.getAll.restore()
+            }
+        })
+
+        it('should forward sharedGist: true to cla.getAll for shared-gist orgs', async () => {
+            // Regression Test
+            req.args = {
+                orgId: 559357,
+                gist: { gist_url: testData.repo_from_db.gist },
+                sharedGist: true
+            }
+            req.authorizedResource = { orgId: 559357 }
+            sinon.stub(cla, 'getAll').callsFake(async (args) => {
+                assert.strictEqual(args.sharedGist, true,
+                    'sharedGist must be forwarded so _updateQuery adds the shared-record $or branch')
+                return [{ user: 'contributor1' }, { user: 'contributor2' }]
+            })
+
+            try {
+                const result = await cla_api.getAll(req)
+                assert(cla.getAll.called)
+                assert.equal(result.length, 2, 'shared-gist signatures must be returned')
+            } finally {
+                cla.getAll.restore()
+            }
         })
 
         it('should call cla service on getGist with repoId', async () => {
